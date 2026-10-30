@@ -252,7 +252,7 @@ function showStart() {
 function showPopups() {
   if (!G.popups.length) return;
   const texts = G.popups.splice(0);
-  modal(`<h2>${{ win: '🏆 胜利', lose: '💸 破产', sold: '🤝 收购结局' }[G.over] || '📢 行业快讯'}</h2>` +
+  modal(`<h2>${{ win: '🏆 胜利', lose: '💸 破产', sold: '🤝 收购结局', hired: '💼 打工人结局' }[G.over] || '📢 行业快讯'}</h2>` +
     texts.map(t => `<p>${t}</p>`).join('') +
     (G.over
       ? `<p class="dim">共经营 ${G.day} 天，声誉 ${G.rep}，团队 ${G.agents.length} 个 agent。<br>` +

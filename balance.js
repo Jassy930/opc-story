@@ -42,7 +42,7 @@ function play(dir, seed, name) {
   if (strat !== 'naive') { s.auto.accept = true; s.auto.rest = true; }
   S.setMode(s, mode);
   while (!s.over && s.day < 900) {
-    if (s.pending) S.choose(s, s.pending.id === 'acquire' ? 0 : Math.floor(rand() * S.pendingView(s).options.length), rand);
+    if (s.pending) S.choose(s, ['acquire', 'headhunt'].includes(s.pending.id) ? 0 : Math.floor(rand() * S.pendingView(s).options.length), rand);
     if (strat === 'naive') {
       while (s.offers.length && s.projects.length <= s.agents.length) S.accept(s, s.offers[0].id);
       if (s.cash > S.hireCost(s) * 3) S.hire(s, s.agents.length % 2 ? 'writer' : role, rand);

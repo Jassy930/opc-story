@@ -152,3 +152,32 @@ test('低精力自动休息只替换当天，不改玩家选的行动', () => {
   expect(s.energy).toBe(55);
   expect(s.action).toBe('sales');
 });
+
+test('冒烟：每条资讯、每个抉择的每个选项在中盘状态下都能跑通', () => {
+  const base = autoplay(S.newGame('service', seeded(2)), seeded(5), 135); // 135 天：20 天内有新模型（内测事件可触发）
+  expect(base.over).toBe(null);
+  base.projects.push({ ...bigProject(999), type: 'service' });
+  const fresh = () => { const s = JSON.parse(JSON.stringify(base)); s.pending = null; s.rep = 70; s.cash = 1e5; s.energy = 80; s.mrr = 1000; return s; };
+  for (const e of S.NEWS) e.run(fresh(), seeded(3));
+  for (const [id, e] of Object.entries(S.CHOICES)) {
+    expect(e.cond(fresh())).toBe(true); // 中盘状态下每个事件都应该可能出现
+    e.options.forEach((o, i) => {
+      const s = fresh();
+      s.pending = { id, ctx: e.init(s, seeded(4)) };
+      expect(typeof S.pendingView(s).text).toBe('string');
+      expect(S.choose(s, i, seeded(6))).toBe(true);
+      S.tick(s, seeded(7));
+    });
+  }
+});
+
+test('#还我旧模型：复活的模型 30 天后再次下线', () => {
+  const s = S.newGame('code');
+  s.offers = [];
+  while (s.day < 80) { s.cash = 1e5; S.tick(s, () => 0.99); }
+  const revive = S.NEWS.find(e => e.id === 'revive');
+  expect(revive.run(s, () => 0)).toContain('GePeTo-4o mini');
+  expect(S.getModel(s, 'gpt4m').retire).toBe(110);
+  while (s.day < 110) { s.cash = 1e5; S.tick(s, () => 0.99); }
+  expect(S.getModel(s, 'gpt4m')).toBeUndefined();
+});
