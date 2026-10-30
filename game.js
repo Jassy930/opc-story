@@ -43,6 +43,8 @@ function sprite(rows, x, y, pal, k = 2) {
     ctx.fillRect(x + i * k, y + j * k, k, k);
   }));
 }
+// 画布在手机上会被缩到 ~40%，名牌/气泡字号跟着放大，否则看不清
+const font = (px, bold = '') => `${bold}${cv.clientWidth < 600 ? px * 1.6 : px}px "PingFang SC", sans-serif`;
 const rect = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
 
 // 8 个工位：2 行 × 4 列
@@ -69,7 +71,7 @@ function drawDesk(x, y, agent) {
   // 咖啡杯
   rect(x + 26, y - 4, 3, 3, '#f4ecd8');
   // 名牌
-  ctx.font = '5px "PingFang SC", sans-serif';
+  ctx.font = font(5);
   ctx.textAlign = 'center';
   ctx.fillStyle = agent ? '#f4ecd8' : '#8a7a68';
   ctx.fillText(agent ? `${agent.name} Lv${agent.level}` : '空工位', x + 15, y + 21);
@@ -133,7 +135,7 @@ function drawScene() {
   rect(bx - 4, by + 1, 38, 12, '#5e3a22');
   rect(bx, by - 10, 12, 8, '#1b1830');
   rect(bx + 1, by - 9, 10, 6, '#ffd166');
-  ctx.font = '5px "PingFang SC", sans-serif';
+  ctx.font = font(5);
   ctx.textAlign = 'center';
   ctx.fillStyle = '#ffd166';
   ctx.fillText('你 (CEO)', bx + 15, by + 21);
@@ -143,7 +145,7 @@ function drawScene() {
   for (const p of particles) {
     p.y += p.vy;
     if (p.text) {
-      ctx.font = 'bold 7px "PingFang SC", sans-serif';
+      ctx.font = font(7, 'bold ');
       ctx.fillStyle = p.c;
       ctx.fillText(p.text, p.x, p.y);
     } else rect(Math.round(p.x), Math.round(p.y), 2, 2, p.c);

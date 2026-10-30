@@ -2,18 +2,20 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>一人公司物语</title>
 <style>
   * { box-sizing: border-box; }
-  body { margin: 0; background: #1b1830; color: #f4ecd8; font: 14px/1.5 "Zpix", "PingFang SC", "Microsoft YaHei", monospace; }
+  body { margin: 0; background: #1b1830; color: #f4ecd8; font: 14px/1.5 "Zpix", "PingFang SC", "Microsoft YaHei", monospace; -webkit-text-size-adjust: 100%; }
   #app { display: flex; gap: 12px; padding: 12px; justify-content: center; align-items: flex-start; }
   .box { background: #2b2745; border: 3px solid #0f0d1c; box-shadow: inset 0 0 0 2px #4a4470; padding: 8px 10px; margin-bottom: 10px; }
   .box h3 { margin: 0 0 6px; font-size: 14px; color: #ffd166; }
-  canvas { display: block; width: 960px; height: 540px; image-rendering: pixelated; border: 3px solid #0f0d1c; }
+  #main { flex: 0 1 960px; min-width: 0; }
+  canvas { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; image-rendering: pixelated; border: 3px solid #0f0d1c; }
   #stats { display: flex; flex-wrap: wrap; gap: 4px 16px; }
   #stats b { color: #ffd166; }
-  #side { width: 440px; max-height: calc(100vh - 24px); overflow-y: auto; }
-  button, select { font: inherit; color: #1b1830; background: #f4ecd8; border: 2px solid #0f0d1c; box-shadow: 2px 2px 0 #0f0d1c; padding: 1px 8px; cursor: pointer; }
+  #side { flex: 0 0 440px; max-height: calc(100vh - 24px); overflow-y: auto; }
+  button, select { touch-action: manipulation; font: inherit; color: #1b1830; background: #f4ecd8; border: 2px solid #0f0d1c; box-shadow: 2px 2px 0 #0f0d1c; padding: 1px 8px; cursor: pointer; }
   button:active { transform: translate(2px, 2px); box-shadow: none; }
   button.on { background: #ffd166; }
   button:disabled { opacity: .45; cursor: default; }
@@ -31,24 +33,45 @@
   td, th { text-align: left; padding: 1px 4px; }
   #log { height: 120px; overflow-y: auto; font-size: 13px; }
   #log div { border-bottom: 1px dotted #3a3560; }
-  #modal { position: fixed; inset: 0; background: #0009; display: none; align-items: center; justify-content: center; }
-  #modal .box { width: 560px; padding: 16px; }
+  #modal { position: fixed; inset: 0; background: #0009; display: none; align-items: center; justify-content: center; z-index: 10; }
+  #modal .box { width: min(560px, 94vw); max-height: 88vh; overflow-y: auto; padding: 16px; }
   #modal h2 { margin-top: 0; color: #ffd166; }
   button.big { font-size: 18px; padding: 4px 18px; background: #ffd166; }
   #report { font-size: 13px; max-height: 170px; overflow-y: auto; }
   .card { display: block; width: 100%; text-align: left; margin: 8px 0; padding: 8px; }
+  #turnbar { display: contents; }
+
+  /* ---- 手机 / 窄屏：单列，「下一天」固定在底部 ---- */
+  @media (max-width: 900px) {
+    #app { flex-direction: column; align-items: stretch; gap: 0; padding: 6px 6px 76px; }
+    #main { display: contents; }               /* 让左栏的块和右栏一起排进单列 */
+    #side { order: 1; max-height: none; overflow: visible; }
+    #logbox { order: 2; }
+    canvas { margin-bottom: 10px; }
+    #turnbar { display: flex; gap: 8px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+      padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); background: #2b2745; border-top: 3px solid #0f0d1c; }
+    #turnbar button { flex: 1; min-height: 48px; font-size: 16px; }
+    .keyhint, #main .grow { display: none; }
+    button, select { min-height: 34px; }
+    select { max-width: 100%; }
+    #market { overflow-x: auto; }
+    #log { height: 180px; }
+    #report { max-height: none; }
+  }
 </style>
 </head>
 <body>
 <div id="app">
-  <div>
+  <div id="main">
     <div class="box" id="stats"></div>
     <canvas id="cv" width="960" height="540"></canvas>
     <div class="box" style="margin-top:10px">
       <div class="row" style="border:0">
-        <button id="next" data-act="next" class="big">下一天 ▶</button>
-        <button id="fast" data-act="fast" title="一直推进，直到有交付/事件/快讯/agent 闲下来/现金告急，最多 30 天">⏩ 推进到有事发生</button>
-        <span class="dim">空格 / F</span>
+        <span id="turnbar">
+          <button id="next" data-act="next" class="big">下一天 ▶</button>
+          <button id="fast" data-act="fast" title="一直推进，直到有交付/事件/快讯/agent 闲下来/现金告急，最多 30 天">⏩ 推进到有事发生</button>
+        </span>
+        <span class="dim keyhint">空格 / F</span>
         <span class="grow"></span>
         token 模式 <span id="mode"></span>
       </div>
@@ -56,7 +79,7 @@
       <div class="row" style="border:0">🤖 自动化：<span id="autos"></span></div>
     </div>
     <div class="box"><h3>📋 日报</h3><div id="report"></div></div>
-    <div class="box"><h3>公司日志</h3><div id="log"></div></div>
+    <div class="box" id="logbox"><h3>公司日志</h3><div id="log"></div></div>
   </div>
   <div id="side">
     <div class="box" id="agents"></div>
