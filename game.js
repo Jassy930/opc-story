@@ -152,17 +152,13 @@ function drawScene() {
 }
 
 // ---------- 面板 ----------
-function dailyBurn(a) {
-  const m = SIM.getModel(G, a.modelId);
-  return SIM.TOKENS_PER_DAY * SIM.MODES[G.mode].tok * m.price;
-}
-
 function renderPanel() {
-  const burn = G.agents.filter(a => a.busy).reduce((t, a) => t + dailyBurn(a), 0);
+  const burn = G.agents.filter(a => a.busy).reduce((t, a) => t + SIM.dailyCost(G, a), 0);
   $('stats').innerHTML = [
     `📅 第 <b>${G.day}</b> 天（第 ${Math.floor(G.day / 30) + 1} 月）`,
     `💰 现金 <b class="${G.cash < 10000 ? 'bad' : ''}">${money(G.cash)}</b>`,
     `⭐ 声誉 <b>${G.rep}</b>`,
+    `⚡ 精力 <b class="${G.energy < SIM.TIRED ? 'bad' : ''}">${G.energy}</b>`,
     `🔁 月订阅 <b>${money(G.mrr)}</b>`,
     `🔥 今日 token <b>${money(burn)}</b>`,
     `🧾 本月 token <b>${money(G.month.token)}</b>`,
@@ -171,7 +167,11 @@ function renderPanel() {
 
   $('mode').innerHTML = Object.entries(SIM.MODES).map(([k, m]) =>
     `<button data-act="mode" data-v="${k}" class="${G.mode === k ? 'on' : ''}" title="token ×${m.tok} / 产出 ×${m.work}">${m.name}</button>`).join(' ');
-  $('next').disabled = !!G.over;
+  $('actions').innerHTML = Object.entries(SIM.D.actions).map(([k, a]) =>
+    `<button data-act="action" data-v="${k}" class="${G.action === k ? 'on' : ''}" title="${a.desc}" ${G.energy + a.energy < 0 ? 'disabled' : ''}>` +
+    `${a.name} <small>${a.energy > 0 ? '+' : ''}${a.energy}</small></button>`).join(' ') +
+    `<div class="dim">${SIM.D.actions[G.action].desc}（会一直保持，直到你换别的；精力不够时自动改为日常管理）</div>`;
+  $('next').disabled = !!G.over || !!G.pending;
   $('report').innerHTML = G.report
     ? `<b>第 ${G.report.day} 天</b>　<span class="good">收入 ${money(G.report.income)}</span>　<span class="bad">token ${money(G.report.token)}</span>` +
       [...G.report.work, ...G.report.lines].map(t => `<div>${t}</div>`).join('')
@@ -188,10 +188,14 @@ function renderPanel() {
       G.agents.map(a => {
         const p = G.projects.find(p => p.id === a.busy);
         return `<div class="row">
-          <div class="grow"><b>${a.name}</b> <span class="dim">Lv${a.level} ${SIM.D.roles[a.role].name}</span><br>
-            <span class="dim">${p ? `▶ ${p.name} · 烧 ${money(dailyBurn(a))}/天` : '💤 空闲（不耗 token）'}</span></div>
-          <select data-agent="${a.id}">${G.models.map(m =>
-            `<option value="${m.id}" ${m.id === a.modelId ? 'selected' : ''}>${m.name}</option>`).join('')}</select>
+          <div class="grow"><b>${a.name}</b> <span class="dim">Lv${a.level}${a.level < 5 ? ` (${a.xp}/${a.level * 10})` : ''} ${SIM.D.roles[a.role].name}</span><br>
+            <span class="dim">${p ? `▶ ${p.name} · 烧 ${money(SIM.dailyCost(G, a))}/天` : '💤 空闲（不耗 token）'}</span></div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <select data-agent="${a.id}" title="使用的模型">${G.models.map(m =>
+              `<option value="${m.id}" ${m.id === a.modelId ? 'selected' : ''}>🧠 ${m.name}</option>`).join('')}</select>
+            <select data-target="${a.id}" title="指派项目"><option value="">📌 自动分配</option>${G.projects.map(p =>
+              `<option value="${p.id}" ${p.id === a.target ? 'selected' : ''}>📌 ${p.name}</option>`).join('')}</select>
+          </div>
           <button data-act="fire" data-id="${a.id}" title="下线">✕</button>
         </div>`;
       }).join('');
@@ -215,15 +219,20 @@ function renderPanel() {
 
   $('market').innerHTML = `<h3>模型市场</h3><table>
     <tr class="dim"><th>模型</th><th>厂商</th><th>¥/百万token</th><th>产出</th><th>质量</th></tr>` +
-    G.models.map(m => `<tr><td style="color:${m.color}">■ ${m.name}</td><td>${m.vendor}</td><td>${m.price}</td><td>${m.power}</td><td>${Math.round(m.quality * 100)}%</td></tr>`).join('') +
+    G.models.map(m => `<tr><td style="color:${m.color}">■ ${m.name}</td><td>${m.vendor}</td><td>${+SIM.priceOf(G, m).toFixed(1)}${m.discountUntil >= G.day ? ' <span class="good">套餐5折</span>' : ''}</td><td>${m.power}</td><td>${Math.round(m.quality * 100)}%</td></tr>`).join('') +
     `</table><div class="dim">换模型需付迁移费 ${money(SIM.SWITCH_FEE)}。老模型会下线，新模型会不定期发布。</div>`;
+
+  $('upgrades').innerHTML = '<h3>公司升级</h3>' + SIM.D.upgrades.map(u => `<div class="row"><div class="grow">
+      <b>${u.name}</b><br><span class="dim">${u.desc}</span></div>` +
+    (G.upgrades.includes(u.id) ? '<span class="good">✔ 已拥有</span>'
+      : `<button data-act="buy" data-id="${u.id}" ${G.cash < u.cost ? 'disabled' : ''}>${money(u.cost)}</button>`) + '</div>').join('');
 
   $('log').innerHTML = G.log.map(l => `<div><span class="dim">D${l.day}</span> ${l.text}</div>`).join('');
 }
 
 // ---------- 弹窗 ----------
 function modal(html) { $('modalBody').innerHTML = html; $('modal').style.display = 'flex'; modalOpen = true; }
-function closeModal() { $('modal').style.display = 'none'; modalOpen = false; }
+function closeModal() { $('modal').style.display = 'none'; $('modalBody').innerHTML = ''; modalOpen = false; }
 
 function showStart() {
   const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
@@ -238,11 +247,19 @@ function showStart() {
 function showPopups() {
   if (!G.popups.length) return;
   const texts = G.popups.splice(0);
-  modal(`<h2>${G.over === 'win' ? '🏆 胜利' : G.over === 'lose' ? '💸 破产' : '📢 行业快讯'}</h2>` +
+  modal(`<h2>${{ win: '🏆 胜利', lose: '💸 破产', sold: '🤝 收购结局' }[G.over] || '📢 行业快讯'}</h2>` +
     texts.map(t => `<p>${t}</p>`).join('') +
     (G.over
       ? `<p class="dim">共经营 ${G.day} 天，声誉 ${G.rep}，团队 ${G.agents.length} 个 agent。</p><button data-act="restart">再来一局</button>`
       : '<button data-act="close">继续经营</button>'));
+}
+
+// 抉择事件：只能选一个选项来关闭
+function showPending() {
+  const v = !modalOpen && SIM.pendingView(G);
+  if (!v) return;
+  modal(`<h2>🤔 抉择时刻</h2><p>${v.text}</p>` +
+    v.options.map((o, i) => `<button class="card" data-act="choose" data-i="${i}">${o}</button>`).join(''));
 }
 
 const save = () => G.over ? localStorage.removeItem(SAVE_KEY) : localStorage.setItem(SAVE_KEY, JSON.stringify(G));
@@ -268,6 +285,7 @@ function nextDay() {
   save();
   renderPanel();
   showPopups();
+  showPending();
 }
 
 // ---------- 交互 ----------
@@ -278,9 +296,12 @@ document.addEventListener('click', e => {
   const id = +b.dataset.id;
   switch (b.dataset.act) {
     case 'start': G = SIM.newGame(b.dataset.id); closeModal(); break;
-    case 'load': G = JSON.parse(localStorage.getItem(SAVE_KEY)); closeModal(); break;
+    case 'load': G = JSON.parse(localStorage.getItem(SAVE_KEY)); closeModal(); renderPanel(); showPending(); return;
     case 'restart': showStart(); return;
-    case 'close': closeModal(); break;
+    case 'close': closeModal(); showPending(); break;
+    case 'choose': SIM.choose(G, +b.dataset.i); closeModal(); save(); renderPanel(); showPopups(); return;
+    case 'action': SIM.setAction(G, b.dataset.v); break;
+    case 'buy': SIM.buy(G, b.dataset.id); break;
     case 'next': nextDay(); return;
     case 'mode': SIM.setMode(G, b.dataset.v); break;
     case 'accept': SIM.accept(G, id); break;
@@ -291,8 +312,10 @@ document.addEventListener('click', e => {
 });
 
 document.addEventListener('change', e => {
-  if (!e.target.dataset.agent) return;
-  SIM.setModel(G, +e.target.dataset.agent, e.target.value);
+  const d = e.target.dataset;
+  if (d.agent) SIM.setModel(G, +d.agent, e.target.value);
+  else if (d.target) SIM.setTarget(G, +d.target, e.target.value ? +e.target.value : null);
+  else return;
   e.target.blur();
   save();
   renderPanel();

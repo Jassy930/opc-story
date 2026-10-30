@@ -27,17 +27,39 @@ const DATA = {
   // price: ¥ / 百万 token；power: 每天产出；quality: 交付质量 0~1
   // release / retire: 第几天发布 / 下线（0 = 开局就有）
   models: [
-    { id: 'gpt4m', name: 'GePeTo-4o mini', vendor: 'OpenEye', color: '#7bd389', price: 4, power: 1.0, quality: 0.55, release: 0, retire: 150 },
-    { id: 'ds2', name: 'DeepSink V2', vendor: '深渊求索', color: '#5b8def', price: 2, power: 0.9, quality: 0.5, release: 0, retire: 240 },
-    { id: 'cs35', name: 'Claudia 3.5 Sonnet', vendor: 'Anthropick', color: '#e8945a', price: 30, power: 2.0, quality: 0.85, release: 0, retire: 210 },
-    { id: 'qw3', name: 'Qwan 3', vendor: '阿里云朵', color: '#a07cf0', price: 6, power: 1.5, quality: 0.68, release: 40 },
-    { id: 'gpt5', name: 'GePeTo-5', vendor: 'OpenEye', color: '#3fbf6f', price: 50, power: 2.8, quality: 0.92, release: 90 },
-    { id: 'dsr1', name: 'DeepSink R1', vendor: '深渊求索', color: '#2f6fe0', price: 4, power: 2.0, quality: 0.78, release: 120, priceWar: true },
-    { id: 'co4', name: 'Claudia 4 Opus', vendor: 'Anthropick', color: '#d9703a', price: 90, power: 3.2, quality: 0.97, release: 180 },
-    { id: 'llb4', name: 'Llamb 4 (开源)', vendor: 'Meta-verse', color: '#4fc3c8', price: 1.5, power: 1.6, quality: 0.65, release: 240 },
-    { id: 'jm3', name: 'Jiminy 3 Pro', vendor: 'Gugol', color: '#f2c94c', price: 20, power: 2.6, quality: 0.88, release: 300 },
-    { id: 'kimo', name: 'Kimo K3', vendor: '月之亮面', color: '#e86fa8', price: 8, power: 2.4, quality: 0.82, release: 360 },
-    { id: 'cs5', name: 'Claudia 5', vendor: 'Anthropick', color: '#ff7a3d', price: 60, power: 4.0, quality: 0.99, release: 450 },
+    { id: 'gpt4m', name: 'GePeTo-4o mini', vendor: 'OpenEye', color: '#7bd389', price: 4, power: 1.0, quality: 0.55, release: 0, retire: 75 },
+    { id: 'ds2', name: 'DeepSink V2', vendor: '深渊求索', color: '#5b8def', price: 2, power: 0.9, quality: 0.5, release: 0, retire: 120 },
+    { id: 'cs35', name: 'Claudia 3.5 Sonnet', vendor: 'Anthropick', color: '#e8945a', price: 30, power: 2.0, quality: 0.85, release: 0, retire: 105 },
+    { id: 'qw3', name: 'Qwan 3', vendor: '阿里云朵', color: '#a07cf0', price: 6, power: 1.5, quality: 0.68, release: 20 },
+    { id: 'gpt5', name: 'GePeTo-5', vendor: 'OpenEye', color: '#3fbf6f', price: 50, power: 2.8, quality: 0.92, release: 45 },
+    { id: 'dsr1', name: 'DeepSink R1', vendor: '深渊求索', color: '#2f6fe0', price: 4, power: 2.0, quality: 0.78, release: 60, priceWar: true },
+    { id: 'co4', name: 'Claudia 4 Opus', vendor: 'Anthropick', color: '#d9703a', price: 90, power: 3.2, quality: 0.97, release: 90 },
+    { id: 'llb4', name: 'Llamb 4 (开源)', vendor: 'Meta-verse', color: '#4fc3c8', price: 1.5, power: 1.6, quality: 0.65, release: 120 },
+    { id: 'jm3', name: 'Jiminy 3 Pro', vendor: 'Gugol', color: '#f2c94c', price: 20, power: 2.6, quality: 0.88, release: 150 },
+    { id: 'kimo', name: 'Kimo K3', vendor: '月之亮面', color: '#e86fa8', price: 8, power: 2.4, quality: 0.82, release: 180 },
+    { id: 'cs5', name: 'Claudia 5', vendor: 'Anthropick', color: '#ff7a3d', price: 60, power: 4.0, quality: 0.99, release: 225 },
+  ],
+
+  // CEO 每天可以做一件事。energy: 精力变化（负数为消耗）
+  actions: {
+    manage: { name: '日常管理', energy: 8, desc: '盯着就行，恢复少量精力' },
+    rest: { name: '休息', energy: 30, desc: '好好睡一觉，大量恢复精力' },
+    sales: { name: '跑客户', energy: -20, desc: '必定带回一个新订单' },
+    review: { name: '亲自把关', energy: -20, desc: '今天所有产出质量 +10%' },
+    tune: { name: '调提示词', energy: -15, desc: '全员经验 +4' },
+    tweet: { name: '发推营销', energy: -10, desc: '声誉 +2' },
+  },
+
+  // 一次性购买的公司升级。work/tok 为乘数，q 为质量加成，lead 为来单速度乘数，guard 为免疫的事件标签
+  upgrades: [
+    { id: 'seo', name: '官网 + SEO', cost: 10000, desc: '来单速度 +50%', lead: 1.5 },
+    { id: 'promptlib', name: 'Prompt 模板库', cost: 12000, desc: '全员产出 +10%', work: 1.1 },
+    { id: 'monitor', name: '监控告警', cost: 15000, desc: '免疫「死循环烧钱」「提示词注入」', guard: 'ops' },
+    { id: 'cache', name: 'Prompt Caching', cost: 18000, desc: 'token 消耗 -25%', tok: 0.75 },
+    { id: 'rag', name: 'RAG 知识库', cost: 25000, desc: '交付质量 +5%', q: 0.05 },
+    { id: 'evals', name: '自动化评测 Evals', cost: 30000, desc: '质量 +5%，免疫「幻觉事故」', q: 0.05, guard: 'hallu' },
+    { id: 'router', name: '模型路由器', cost: 35000, desc: 'token 消耗再 -20%', tok: 0.8 },
+    { id: 'orch', name: '多 Agent 编排框架', cost: 45000, desc: '全员产出 +15%', work: 1.15 },
   ],
 
   agentNames: ['小码', '阿文', 'Echo', 'Bolt', 'Nova', 'Pixel', 'Ada', 'Turing', 'Mochi', 'Kiwi', 'Zed', '豆包包', '小 K', 'Rex'],
