@@ -162,7 +162,7 @@ function tick(s, rand = Math.random) {
     }
     if (m.retire === s.day && getModel(s, m.id)) {
       s.models = s.models.filter(x => x.id !== m.id);
-      const fallback = s.models.reduce((a, b) => (b.quality > a.quality ? b : a));
+      const fallback = s.models.reduce((a, b) => (Math.abs(b.price - m.price) < Math.abs(a.price - m.price) ? b : a)); // 迁到价格最接近的，避免成本暴涨
       const moved = s.agents.filter(a => a.modelId === m.id);
       moved.forEach(a => (a.modelId = fallback.id));
       log(s, `⚰️ ${m.name} 正式下线` + (moved.length ? `，${moved.length} 个 agent 被强制迁移到 ${fallback.name}` : ''), true);
@@ -200,7 +200,7 @@ function tick(s, rand = Math.random) {
       s.month.income += pay;
       s.rep = clamp(s.rep + (q >= p.minQ ? 2 : -4), 0, 100);
       if (p.type === 'service') s.mrr += Math.round(p.reward * 0.04);
-      s.agents.filter(a => p.crew.includes(a.id) && a.level < 5 && rand() < 0.5).forEach(a => a.level++);
+      s.agents.filter(a => p.crew.includes(a.id) && a.level < 5 && rand() < 0.25).forEach(a => a.level++);
       log(s, `✅ 交付「${p.name}」质量 ${Math.round(q * 100)}%（要求 ${Math.round(p.minQ * 100)}%），收入 ¥${pay.toLocaleString()}`);
       s.projects.splice(s.projects.indexOf(p), 1);
     } else if (s.day > p.deadline) {

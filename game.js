@@ -177,7 +177,7 @@ function renderPanel() {
     `<button data-act="mode" data-v="${k}" class="${G.mode === k ? 'on' : ''}" title="token ×${m.tok} / 产出 ×${m.work}">${m.name}</button>`).join(' ');
 
   // 正在操作下拉框时别重绘 agent 区，否则下拉会被关掉
-  if (!$('agents').contains(document.activeElement)) {
+  if (document.activeElement?.tagName !== "SELECT" || !$("agents").contains(document.activeElement)) {
     const cost = SIM.hireCost(G);
     $('agents').innerHTML = `<h3>Agent 团队（${G.agents.length}/${SIM.MAX_AGENTS}）</h3>
       <div class="row">招募
