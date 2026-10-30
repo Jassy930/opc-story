@@ -2,18 +2,21 @@
 // 回合制：玩家每点一次「下一天」调用一次 tick()；有待选事件 (s.pending) 时必须先 choose()。
 const D = typeof module !== 'undefined' ? require('./data.js') : DATA;
 
-const TOKENS_PER_DAY = 6;        // 每个工作中的 agent 每天消耗的百万 token（标准模式）
+const TOKENS_PER_DAY = 12;       // 每个工作中的 agent 每天消耗的百万 token（标准模式）
 const RENT = 3000;               // 月租 + 订阅
 const UPKEEP = 800;              // 每个 agent 每月的部署/运维费
 const SWITCH_FEE = 500;          // 换模型的迁移费（提示词重调）
-const GOAL = 500000;             // 现金达到即胜利
+const GOAL = 1000000;            // 现金达到即胜利
 const MAX_AGENTS = 8;            // 办公室工位数
-const SAVE_V = 2;                // 存档格式版本，状态结构变了就 +1，旧存档自动作废
+const SAVE_V = 3;                // 存档格式版本，状态结构变了就 +1，旧存档自动作废
+const REWARD_PER_WORK = 150;     // 每单位工作量的基础报酬（质量要求 0.7 时）
+const CREDIT = 20000;            // 透支额度：现金跌破 -CREDIT 才破产
+const INTEREST = 0.005;          // 透支日息
 const TIRED = 20;                // 精力低于此值，CEO 疲惫：全员质量 -5%
 const MODES = {
-  eco: { name: '省钱', tok: 0.5, work: 0.65, q: -0.05 },
+  eco: { name: '省钱', tok: 0.5, work: 0.75, q: -0.05 },   // 现金紧张时降低日烧钱
   normal: { name: '标准', tok: 1, work: 1, q: 0 },
-  turbo: { name: '深度思考', tok: 2, work: 1.4, q: 0.05 },
+  turbo: { name: '深度思考', tok: 2.2, work: 1.3, q: 0.05 }, // 赶工期/冲质量用，常开不划算
 };
 
 const pick = (arr, rand) => arr[Math.floor(rand() * arr.length)];
@@ -49,6 +52,7 @@ function newGame(dirId, rand = Math.random) {
   const s = {
     v: SAVE_V, day: 0, dir: dir.id, cash: dir.cash, rep: 10, mrr: 0, mode: 'normal', throttle: 0,
     energy: 100, action: 'manage', upgrades: [], extraFixed: 0, pending: null, soldFor: 0,
+    auto: { accept: false, rest: false }, total: { income: 0, token: 0, fixed: 0 },
     models: D.models.filter(m => m.release === 0).map(m => ({ ...m })),
     agents: [], offers: [], projects: [], log: [], popups: [], nextId: 1,
     month: { income: 0, token: 0 }, over: null, hist: [dir.cash], report: null,
@@ -73,10 +77,11 @@ function makeOffer(s, rand, bonus = 1) {
   for (const [t, w] of Object.entries(mix)) { if ((r -= w) < 0) { type = t; break; } }
   const T = D.types[type];
   const work = Math.round(T.min + rand() * (T.max - T.min));
+  const minQ = Math.round((0.5 + rand() * 0.35 + work / 1000) * 100) / 100;
   return {
-    id: s.nextId++, type, name: pick(T.names, rand), work,
-    reward: Math.round(work * 120 * (1 + s.rep / 200) * (0.8 + rand() * 0.4) * bonus / 100) * 100,
-    minQ: Math.round((0.5 + rand() * 0.35 + work / 1000) * 100) / 100,
+    id: s.nextId++, type, name: pick(T.names, rand), work, minQ,
+    // 质量要求越高越值钱：高要求单才养得起贵模型
+    reward: Math.round(work * REWARD_PER_WORK * (T.pay || 1) * (minQ / 0.7) ** 2 * (1 + s.rep / 200) * (0.8 + rand() * 0.4) * bonus / 100) * 100,
     days: Math.ceil(work / 2.5) + 10,
     expires: s.day + 15,
   };
@@ -338,6 +343,53 @@ function choose(s, i, rand = Math.random) {
   return true;
 }
 
+// ---- 自动化 ----
+
+function setAuto(s, key, on) { if (key in s.auto) s.auto[key] = !!on; }
+
+// 团队对某类项目的日产出估计（按当前模型/模式/升级/等级/职业匹配）
+function teamRate(s, type) {
+  const up = boosts(s), mode = MODES[s.mode];
+  return s.agents.reduce((t, a) => t + getModel(s, a.modelId).power * mode.work * up.work *
+    (1 + 0.15 * (a.level - 1)) * (D.roles[a.role].type === type ? 1.5 : 1), 0);
+}
+// 团队平均交付质量估计
+function teamQuality(s) {
+  if (!s.agents.length) return 0;
+  const q = MODES[s.mode].q + boosts(s).q;
+  return s.agents.reduce((t, a) => t + clamp(getModel(s, a.modelId).quality + q, 0, 1), 0) / s.agents.length;
+}
+
+// 只接「质量够得上、按现有排期做得完」的单，按单位报酬从高到低
+function autoAccept(s) {
+  const q = teamQuality(s);
+  for (const o of [...s.offers].sort((a, b) => b.reward / b.work - a.reward / a.work)) {
+    if (q < o.minQ) continue;
+    const load = s.projects.reduce((t, p) => t + Math.max(0, p.work - p.done), 0) + o.work;
+    if (load / teamRate(s, o.type) > o.days * 0.8) continue;
+    accept(s, o.id);
+    log(s, `📥 自动接单「${o.name}」${yuan(o.reward)}`);
+  }
+}
+
+// 半自动推进：一直过天，直到有值得你看一眼的事（最多 max 天）
+function runUntil(s, max = 30, rand = Math.random) {
+  for (let d = 1; d <= max; d++) {
+    const cash0 = s.cash, busy0 = new Set(s.agents.filter(a => a.busy).map(a => a.id));
+    if (!tick(s, rand)) return { days: d - 1, reason: s.pending ? '有事件需要你决定' : '游戏已结束' };
+    const hit = s.report.lines.find(t => /^(✅|❌|📰)/.test(t));
+    const why = s.over ? '游戏结束'
+      : s.pending ? '有事件需要你决定'
+      : s.popups.length ? '行业快讯'
+      : hit ? hit
+      : !s.auto.accept && s.offers.length && s.agents.some(a => busy0.has(a.id) && !a.busy) ? '有 agent 闲下来了，订单板上有单'
+      : s.cash < 10000 && cash0 >= 10000 ? '现金跌破 ¥10,000'
+      : null;
+    if (why) return { days: d, reason: why };
+  }
+  return { days: max, reason: `已连续推进 ${max} 天` };
+}
+
 // ---- 每天推进一次 ----
 
 function tick(s, rand = Math.random) {
@@ -348,6 +400,7 @@ function tick(s, rand = Math.random) {
 
   // CEO 今日行动（精力不够就自动退回日常管理）
   let act = D.actions[s.action];
+  if (s.auto.rest && s.energy < 30) act = D.actions.rest; // 只替换今天，不改玩家选的行动
   if (s.energy + act.energy < 0) act = D.actions.manage;
   s.energy = clamp(s.energy + act.energy, 0, 100);
   if (act === D.actions.sales) { s.offers.push(makeOffer(s, rand, 1.1)); log(s, '🤝 你跑了一天客户，带回一个新订单'); }
@@ -377,7 +430,8 @@ function tick(s, rand = Math.random) {
 
   // 订单板：过期 + 新单（声誉越高、有官网，来单越快）
   s.offers = s.offers.filter(o => o.expires > s.day);
-  if (s.offers.length < 5 && rand() < (0.15 + s.rep / 400) * up.lead) s.offers.push(makeOffer(s, rand));
+  if (s.offers.length < 5 && rand() < (0.15 + s.rep / 400) * up.lead * (D.directions.find(d => d.id === s.dir).lead || 1)) s.offers.push(makeOffer(s, rand));
+  if (s.auto.accept) autoAccept(s);
 
   // agent 干活、烧 token：手动指派优先，否则同类型里最早截止的
   const mode = MODES[s.mode];
@@ -394,6 +448,7 @@ function tick(s, rand = Math.random) {
     const cost = dailyCost(s, a);
     s.cash -= cost;
     s.month.token += cost;
+    s.total.token += cost;
     const w = m.power * mode.work * up.work * (1 + 0.15 * (a.level - 1)) * (D.roles[a.role].type === p.type ? 1.5 : 1) * (s.throttle > 0 ? 0.5 : 1);
     p.done += w;
     p.qsum += w * clamp(m.quality + mode.q + qBonus, 0, 1);
@@ -408,9 +463,11 @@ function tick(s, rand = Math.random) {
   for (const p of [...s.projects]) {
     if (p.done >= p.work) {
       const q = p.qsum / p.done;
-      const pay = Math.round(p.reward * clamp(q / p.minQ, 0.5, 1.3));
+      // 超出要求最多 +15%；不达标按差距平方扣钱
+      const pay = Math.round(p.reward * (q >= p.minQ ? Math.min(1.15, q / p.minQ) : (q / p.minQ) ** 2));
       s.cash += pay;
       s.month.income += pay;
+      s.total.income += pay;
       s.report.income += pay;
       s.rep = clamp(s.rep + (q >= p.minQ ? 2 : -4), 0, 100);
       if (p.type === 'service') s.mrr += Math.round(p.reward * 0.04);
@@ -429,6 +486,7 @@ function tick(s, rand = Math.random) {
   // 月结
   if (s.day % 30 === 0) {
     const fixed = RENT + UPKEEP * s.agents.length + s.extraFixed;
+    s.total.fixed += fixed;
     s.cash += s.mrr - fixed;
     log(s, `📅 第 ${s.day / 30} 月结算：项目收入 ${yuan(s.month.income)}，订阅 ${yuan(s.mrr)}，` +
       `token ${yuan(s.month.token)}，固定开销 ${yuan(fixed)}`);
@@ -438,14 +496,19 @@ function tick(s, rand = Math.random) {
   s.hist.push(s.cash);
   if (s.hist.length > 90) s.hist.shift();
 
-  if (s.cash < 0) { s.over = 'lose'; s.pending = null; log(s, `💸 现金耗尽，公司在第 ${s.day} 天破产了。`, true); }
+  if (s.cash < 0) {
+    const i = Math.round(-s.cash * INTEREST);
+    s.cash -= i;
+    log(s, `⚠️ 透支中（额度 ${yuan(CREDIT)}），今日利息 ${yuan(i)}`);
+  }
+  if (s.cash < -CREDIT) { s.over = 'lose'; s.pending = null; log(s, `💸 透支超过额度，公司在第 ${s.day} 天破产了。`, true); }
   else if (s.cash >= GOAL) { s.over = 'win'; s.pending = null; log(s, `🏆 第 ${s.day} 天现金突破 ${yuan(GOAL)}，一人公司成功了！`, true); }
   return true;
 }
 
 const SIM = {
-  D, MODES, TOKENS_PER_DAY, SWITCH_FEE, GOAL, MAX_AGENTS, TIRED, SAVE_V,
-  newGame, tick, accept, hire, fire, setModel, setTarget, setMode, setAction, buy, choose, pendingView,
+  D, MODES, TOKENS_PER_DAY, SWITCH_FEE, GOAL, MAX_AGENTS, TIRED, CREDIT, SAVE_V, CHOICES,
+  newGame, tick, runUntil, setAuto, autoAccept, teamQuality, accept, hire, fire, setModel, setTarget, setMode, setAction, buy, choose, pendingView,
   hireCost, getModel, priceOf, dailyCost,
 };
 if (typeof module !== 'undefined') module.exports = SIM;

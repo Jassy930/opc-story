@@ -4,7 +4,7 @@ const DATA = {
     { id: 'code', name: 'AI 编程外包', desc: '接企业外包需求，agent 写代码。单子大、报酬高、工期长。',
       cash: 30000, role: 'coder', mix: { code: 0.7, content: 0.15, service: 0.15 } },
     { id: 'content', name: 'AI 内容工作室', desc: '文案、脚本、网文代写。单子小而多，周转快。',
-      cash: 25000, role: 'writer', mix: { code: 0.15, content: 0.7, service: 0.15 } },
+      cash: 25000, role: 'writer', lead: 1.6, mix: { code: 0.15, content: 0.7, service: 0.15 } },
     { id: 'service', name: 'AI 客服 SaaS', desc: '给商家部署客服 agent。每单交付后带来持续月费 (MRR)。',
       cash: 28000, role: 'support', mix: { code: 0.15, content: 0.15, service: 0.7 } },
   ],
@@ -18,7 +18,7 @@ const DATA = {
   types: {
     code: { name: '编程', min: 30, max: 120,
       names: ['电商小程序', '企业官网重构', '数据看板', 'CRM 系统', '爬虫脚本', 'App 后端 API', '自动化测试', 'ERP 对接'] },
-    content: { name: '内容', min: 10, max: 50,
+    content: { name: '内容', min: 10, max: 50, pay: 1.3, // 小单单价高
       names: ['品牌营销文案', '短视频脚本 x30', '网文代写', '公众号代运营', '说明书翻译', '播客文字稿', '游戏剧情'] },
     service: { name: '客服', min: 20, max: 80,
       names: ['奶茶店智能客服', '电商售后机器人', '医院导诊助手', '银行 FAQ 机器人', '酒店预订助手', '驾校咨询机器人'] },

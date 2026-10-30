@@ -26,9 +26,14 @@ test('干活会烧 token 扣钱，空闲不扣', () => {
   expect(s.cash).toBe(before - S.TOKENS_PER_DAY * S.getModel(s, 'cs35').price);
 });
 
-test('现金为负即破产', () => {
+test('透支额度内不破产（付利息），超过额度破产', () => {
   const s = S.newGame('code');
-  s.cash = -1;
+  s.offers = [];
+  s.cash = -10000;
+  S.tick(s, () => 0.99);
+  expect(s.over).toBe(null);
+  expect(s.cash).toBe(-10050);
+  s.cash = -S.CREDIT - 1;
   S.tick(s, () => 0.99);
   expect(s.over).toBe('lose');
 });
@@ -108,4 +113,37 @@ test('升级 Prompt Caching 降低 token 成本', () => {
   expect(S.buy(s, 'cache')).toBe(true);
   expect(S.dailyCost(s, s.agents[0])).toBeCloseTo(before * 0.75);
   expect(S.buy(s, 'cache')).toBe(false);
+});
+
+test('自动接单：只接质量够得上、做得完的单', () => {
+  const s = S.newGame('code');
+  s.auto.accept = true;
+  const base = { type: 'code', name: 'x', work: 20, reward: 5000, days: 30, expires: 99 };
+  s.offers = [{ ...base, id: 901, minQ: 0.8 }, { ...base, id: 902, minQ: 0.95 }, { ...base, id: 903, minQ: 0.6, work: 500 }];
+  S.tick(s, () => 0.99);
+  expect(s.projects.map(p => p.id)).toEqual([901]); // 902 质量不够（cs35=0.85），903 工期内做不完
+});
+
+test('半自动推进：遇到抉择事件停下，且不超过上限', () => {
+  const s = S.newGame('code');
+  s.offers = [];
+  let r = S.runUntil(s, 7, () => 0.99);
+  expect(r.days).toBe(7);
+  expect(s.day).toBe(7);
+  s.projects.push(bigProject(99));
+  s.pending = { id: 'rush', ctx: { pid: 99 } };
+  r = S.runUntil(s, 7, () => 0.99);
+  expect(r.days).toBe(0);
+  expect(s.day).toBe(7);
+});
+
+test('低精力自动休息只替换当天，不改玩家选的行动', () => {
+  const s = S.newGame('code');
+  s.offers = [];
+  s.auto.rest = true;
+  s.energy = 25;
+  S.setAction(s, 'sales');
+  S.tick(s, () => 0.99);
+  expect(s.energy).toBe(55);
+  expect(s.action).toBe('sales');
 });

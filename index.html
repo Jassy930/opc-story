@@ -46,11 +46,14 @@
     <canvas id="cv" width="960" height="540"></canvas>
     <div class="box" style="margin-top:10px">
       <div class="row" style="border:0">
-        <button id="next" data-act="next" class="big">下一天 ▶</button><span class="dim">（空格键）</span>
+        <button id="next" data-act="next" class="big">下一天 ▶</button>
+        <button id="fast" data-act="fast" title="一直推进，直到有交付/事件/快讯/agent 闲下来/现金告急，最多 30 天">⏩ 推进到有事发生</button>
+        <span class="dim">空格 / F</span>
         <span class="grow"></span>
         token 模式 <span id="mode"></span>
       </div>
       <div class="row" style="border:0">👤 你今天要做：<span id="actions"></span></div>
+      <div class="row" style="border:0">🤖 自动化：<span id="autos"></span></div>
     </div>
     <div class="box"><h3>📋 日报</h3><div id="report"></div></div>
     <div class="box"><h3>公司日志</h3><div id="log"></div></div>

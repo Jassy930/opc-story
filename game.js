@@ -7,7 +7,7 @@ const $ = id => document.getElementById(id);
 const money = n => '¥' + Math.round(n).toLocaleString();
 const TYPE_COLOR = { code: '#5bc0eb', content: '#f78fb3', service: '#7bd389' };
 
-let G = null, frame = 0, particles = [], modalOpen = false;
+let G = null, lastRun = null, frame = 0, particles = [], modalOpen = false;
 const SAVE_KEY = "opc-save";
 
 // ---------- 像素精灵：字符 → 颜色，'.' 透明 ----------
@@ -156,7 +156,7 @@ function renderPanel() {
   const burn = G.agents.filter(a => a.busy).reduce((t, a) => t + SIM.dailyCost(G, a), 0);
   $('stats').innerHTML = [
     `📅 第 <b>${G.day}</b> 天（第 ${Math.floor(G.day / 30) + 1} 月）`,
-    `💰 现金 <b class="${G.cash < 10000 ? 'bad' : ''}">${money(G.cash)}</b>`,
+    `💰 现金 <b class="${G.cash < 10000 ? 'bad' : ''}">${money(G.cash)}</b>${G.cash < 0 ? ` <span class="bad">透支中！额度 ${money(SIM.CREDIT)}</span>` : ''}`,
     `⭐ 声誉 <b>${G.rep}</b>`,
     `⚡ 精力 <b class="${G.energy < SIM.TIRED ? 'bad' : ''}">${G.energy}</b>`,
     `🔁 月订阅 <b>${money(G.mrr)}</b>`,
@@ -171,9 +171,12 @@ function renderPanel() {
     `<button data-act="action" data-v="${k}" class="${G.action === k ? 'on' : ''}" title="${a.desc}" ${G.energy + a.energy < 0 ? 'disabled' : ''}>` +
     `${a.name} <small>${a.energy > 0 ? '+' : ''}${a.energy}</small></button>`).join(' ') +
     `<div class="dim">${SIM.D.actions[G.action].desc}（会一直保持，直到你换别的；精力不够时自动改为日常管理）</div>`;
-  $('next').disabled = !!G.over || !!G.pending;
+  $('next').disabled = $('fast').disabled = !!G.over || !!G.pending;
+  $('autos').innerHTML = [['accept', '自动接单', '只接团队质量够、排期做得完的单'], ['rest', '低精力自动休息', '精力 < 30 时当天改为休息']]
+    .map(([k, name, tip]) => `<label title="${tip}"><input type="checkbox" data-auto="${k}" ${G.auto[k] ? 'checked' : ''}> ${name}</label>`).join('　');
   $('report').innerHTML = G.report
-    ? `<b>第 ${G.report.day} 天</b>　<span class="good">收入 ${money(G.report.income)}</span>　<span class="bad">token ${money(G.report.token)}</span>` +
+    ? (lastRun ? `<div class="good">⏩ 连续推进 ${lastRun.days} 天，停下原因：${lastRun.reason}</div>` : '') +
+      `<b>第 ${G.report.day} 天</b>　<span class="good">收入 ${money(G.report.income)}</span>　<span class="bad">token ${money(G.report.token)}</span>` +
       [...G.report.work, ...G.report.lines].map(t => `<div>${t}</div>`).join('')
     : '<span class="dim">新公司开张。接几个单子、配好模型，然后点「下一天」。</span>';
 
@@ -252,7 +255,8 @@ function showPopups() {
   modal(`<h2>${{ win: '🏆 胜利', lose: '💸 破产', sold: '🤝 收购结局' }[G.over] || '📢 行业快讯'}</h2>` +
     texts.map(t => `<p>${t}</p>`).join('') +
     (G.over
-      ? `<p class="dim">共经营 ${G.day} 天，声誉 ${G.rep}，团队 ${G.agents.length} 个 agent。</p><button data-act="restart">再来一局</button>`
+      ? `<p class="dim">共经营 ${G.day} 天，声誉 ${G.rep}，团队 ${G.agents.length} 个 agent。<br>` +
+        `累计项目收入 ${money(G.total.income)}，烧掉 token ${money(G.total.token)}，固定开销 ${money(G.total.fixed)}。</p><button data-act="restart">再来一局</button>`
       : '<button data-act="close">继续经营</button>'));
 }
 
@@ -266,11 +270,12 @@ function showPending() {
 
 const save = () => G.over ? localStorage.removeItem(SAVE_KEY) : localStorage.setItem(SAVE_KEY, JSON.stringify(G));
 
-// ---------- 推进一天（玩家点击才会走） ----------
-function nextDay() {
-  if (!G || G.over || modalOpen) return;
+// ---------- 推进（玩家点击才会走）：fast = 一直推进到有事发生 ----------
+function nextDay(fast = false) {
+  if (!G || G.over || G.pending || modalOpen) return;
   const last = G.log[0];
-  SIM.tick(G);
+  lastRun = fast ? SIM.runUntil(G, 30) : null;
+  if (!fast) SIM.tick(G);
   // 金币从干活的 agent 头上冒出来 = 今天烧掉的 token
   G.agents.forEach((a, i) => {
     if (!a.busy) return;
@@ -279,6 +284,7 @@ function nextDay() {
   let n = 0; // 同一天多条提示往上错开，避免叠字
   for (const l of G.log) {
     if (l === last) break;
+    if (n > 4) break;
     const y = 110 - 9 * n++;
     if (l.text.startsWith('✅')) particles.push({ x: 277, y, vy: -0.5, life: 30, c: '#7bd389', text: '交付！+¥' });
     if (l.text.startsWith('❌')) particles.push({ x: 277, y, vy: -0.5, life: 30, c: '#ff6b6b', text: '逾期…' });
@@ -305,6 +311,7 @@ document.addEventListener('click', e => {
     case 'action': SIM.setAction(G, b.dataset.v); break;
     case 'buy': SIM.buy(G, b.dataset.id); break;
     case 'next': nextDay(); return;
+    case 'fast': nextDay(true); return;
     case 'mode': SIM.setMode(G, b.dataset.v); break;
     case 'accept': SIM.accept(G, id); break;
     case 'hire': SIM.hire(G, $('hireRole').value); break;
@@ -316,6 +323,7 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => {
   const d = e.target.dataset;
   if (d.agent) SIM.setModel(G, +d.agent, e.target.value);
+  else if (d.auto) SIM.setAuto(G, d.auto, e.target.checked);
   else if (d.target) SIM.setTarget(G, +d.target, e.target.value ? +e.target.value : null);
   else return;
   e.target.blur();
@@ -324,9 +332,9 @@ document.addEventListener('change', e => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.code !== 'Space' || /SELECT|INPUT|BUTTON/.test(document.activeElement.tagName)) return;
+  if (!['Space', 'KeyF'].includes(e.code) || /SELECT|INPUT|BUTTON/.test(document.activeElement.tagName)) return;
   e.preventDefault();
-  nextDay();
+  nextDay(e.code === 'KeyF');
 });
 
 // 只负责动画（机器人晃动、指示灯、粒子），不推进游戏时间
