@@ -8,6 +8,7 @@ const UPKEEP = 800;              // 每个 agent 每月的部署/运维费
 const SWITCH_FEE = 500;          // 换模型的迁移费（提示词重调）
 const GOAL = 500000;             // 现金达到即胜利
 const MAX_AGENTS = 8;            // 办公室工位数
+const SAVE_V = 2;                // 存档格式版本，状态结构变了就 +1，旧存档自动作废
 const TIRED = 20;                // 精力低于此值，CEO 疲惫：全员质量 -5%
 const MODES = {
   eco: { name: '省钱', tok: 0.5, work: 0.65, q: -0.05 },
@@ -46,7 +47,7 @@ function log(s, text, popup = false) {
 function newGame(dirId, rand = Math.random) {
   const dir = D.directions.find(d => d.id === dirId);
   const s = {
-    day: 0, dir: dir.id, cash: dir.cash, rep: 10, mrr: 0, mode: 'normal', throttle: 0,
+    v: SAVE_V, day: 0, dir: dir.id, cash: dir.cash, rep: 10, mrr: 0, mode: 'normal', throttle: 0,
     energy: 100, action: 'manage', upgrades: [], extraFixed: 0, pending: null, soldFor: 0,
     models: D.models.filter(m => m.release === 0).map(m => ({ ...m })),
     agents: [], offers: [], projects: [], log: [], popups: [], nextId: 1,
@@ -195,7 +196,7 @@ const CHOICES = {
   rush: {
     w: 3, cond: s => s.projects.length > 0,
     init: (s, rand) => ({ pid: pick(s.projects, rand).id }),
-    text: (s, c) => `客户「${proj(s, c).name}」急着上线，希望提前 5 天交付，愿意多付 30%。`,
+    text: (s, c) => `客户「${proj(s, c).name}」急着上线，希望提前 5 天交付（当前剩 ${proj(s, c).deadline - s.day} 天），愿意多付 30%。`,
     options: [
       { label: '接下挑战（工期 -5 天，报酬 +30%）', run: (s, c) => { const p = proj(s, c); p.deadline -= 5; p.reward = Math.round(p.reward * 1.3); } },
       { label: '婉拒，按原计划', run: () => {} },
@@ -357,8 +358,8 @@ function tick(s, rand = Math.random) {
 
   // 模型发布 / 下线
   for (const m of D.models) {
-    if (m.release === s.day && !getModel(s, m.id)) {
-      s.models.push({ ...m });
+    if (m.release === s.day) {
+      if (!getModel(s, m.id)) s.models.push({ ...m }); // 内测过的已经在列表里
       log(s, `🚀 ${m.vendor} 发布了 ${m.name}！价格 ¥${m.price}/M，产出 ${m.power}，质量 ${m.quality}`, true);
       if (m.priceWar) {
         s.models.forEach(x => { if (x.id !== m.id) x.price = Math.round(x.price * 0.75 * 10) / 10; });
@@ -443,7 +444,7 @@ function tick(s, rand = Math.random) {
 }
 
 const SIM = {
-  D, MODES, TOKENS_PER_DAY, SWITCH_FEE, GOAL, MAX_AGENTS, TIRED,
+  D, MODES, TOKENS_PER_DAY, SWITCH_FEE, GOAL, MAX_AGENTS, TIRED, SAVE_V,
   newGame, tick, accept, hire, fire, setModel, setTarget, setMode, setAction, buy, choose, pendingView,
   hireCost, getModel, priceOf, dailyCost,
 };
