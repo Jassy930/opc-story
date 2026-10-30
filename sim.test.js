@@ -135,6 +135,11 @@ test('半自动推进：遇到抉择事件停下，且不超过上限', () => {
   r = S.runUntil(s, 7, () => 0.99);
   expect(r.days).toBe(0);
   expect(s.day).toBe(7);
+  S.choose(s, 1);
+  s.cash = 300; // 一天烧 ¥360，跨入透支应停下
+  r = S.runUntil(s, 7, () => 0.99);
+  expect(r.days).toBe(1);
+  expect(r.reason).toContain('透支');
 });
 
 test('低精力自动休息只替换当天，不改玩家选的行动', () => {

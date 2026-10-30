@@ -354,6 +354,7 @@ function teamRate(s, type) {
     (1 + 0.15 * (a.level - 1)) * (D.roles[a.role].type === type ? 1.5 : 1), 0);
 }
 // 团队平均交付质量估计
+// ponytail: 全队平均，混搭模型（1 个贵的 + 一堆便宜的）时偏乐观；按实际会被派到的 agent 算更准
 function teamQuality(s) {
   if (!s.agents.length) return 0;
   const q = MODES[s.mode].q + boosts(s).q;
@@ -383,6 +384,7 @@ function runUntil(s, max = 30, rand = Math.random) {
       : s.popups.length ? '行业快讯'
       : hit ? hit
       : !s.auto.accept && s.offers.length && s.agents.some(a => busy0.has(a.id) && !a.busy) ? '有 agent 闲下来了，订单板上有单'
+      : s.cash < 0 && cash0 >= 0 ? '进入透支！'
       : s.cash < 10000 && cash0 >= 10000 ? '现金跌破 ¥10,000'
       : null;
     if (why) return { days: d, reason: why };
@@ -421,10 +423,12 @@ function tick(s, rand = Math.random) {
     }
     if (m.retire === s.day && getModel(s, m.id)) {
       s.models = s.models.filter(x => x.id !== m.id);
-      const fallback = s.models.reduce((a, b) => (Math.abs(b.price - m.price) < Math.abs(a.price - m.price) ? b : a)); // 迁到价格最接近的，避免成本暴涨
+      // 厂商「贴心」地把你升级到自家最新模型——不盯着模型的玩家会被账单教育
+      const same = s.models.filter(x => x.vendor === m.vendor);
+      const fallback = (same.length ? same : s.models).reduce((a, b) => (b.release > a.release ? b : a));
       const moved = s.agents.filter(a => a.modelId === m.id);
       moved.forEach(a => (a.modelId = fallback.id));
-      log(s, `⚰️ ${m.name} 正式下线` + (moved.length ? `，${moved.length} 个 agent 被强制迁移到 ${fallback.name}` : ''), true);
+      log(s, `⚰️ ${m.name} 正式下线` + (moved.length ? `，${moved.length} 个 agent 被厂商强制迁移到 ${fallback.name}（¥${fallback.price}/M，记得检查成本）` : ''), true);
     }
   }
 

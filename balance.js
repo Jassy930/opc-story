@@ -19,6 +19,19 @@ const MODEL = {
     const ok = s.models.filter(m => m.quality >= need);
     return ok.length ? ok.reduce((x, y) => (costPerWork(y) < costPerWork(x) ? y : x)) : MODEL.best(s);
   },
+  // 满足要求的模型里，日利润（产出 × 单位报酬 − token 费）最高的
+  margin: (s, a) => {
+    const type = S.D.roles[a.role].type;
+    const ps = s.projects.filter(p => p.type === type).length ? s.projects.filter(p => p.type === type) : s.projects;
+    if (!ps.length) return null;
+    const need = Math.max(...ps.map(p => p.minQ)) - S.MODES[s.mode].q;
+    const perWork = ps.reduce((t, p) => t + p.reward, 0) / ps.reduce((t, p) => t + p.work, 0);
+    const mode = S.MODES[s.mode];
+    const k = mode.work * (1 + 0.15 * (a.level - 1)) * 1.5 * S.D.upgrades.reduce((t, u) => t * (s.upgrades.includes(u.id) && u.work || 1), 1); // 职业匹配/等级/升级
+    const profit = m => m.power * k * perWork * Math.min(1.15, (m.quality + mode.q) / need) - S.TOKENS_PER_DAY * mode.tok * S.priceOf(s, m);
+    const ok = s.models.filter(m => m.quality + mode.q >= need);
+    return ok.length ? ok.reduce((x, y) => (profit(y) > profit(x) ? y : x)) : MODEL.best(s);
+  },
 };
 
 function play(dir, seed, name) {
@@ -52,7 +65,7 @@ function play(dir, seed, name) {
 console.log(`每格 ${N} 局。通关=现金到 ¥100 万；token占支出 = token /（token + 固定开销）；利用率 = 干活的 agent·天 / 全部 agent·天\n`);
 console.log('方向      策略         通关  中位天数  破产  D180现金中位   token占支出  token占收入  agent利用率');
 for (const dir of ['code', 'content', 'service']) {
-  for (const strat of (process.argv[3] || 'naive,keep,cheap,best,smart,smart:eco,smart:turbo').split(',')) {
+  for (const strat of (process.argv[3] || 'naive,keep,cheap,best,smart,margin,margin:eco,margin:turbo').split(',')) {
     const rs = Array.from({ length: N }, (_, i) => play(dir, i + 1, strat));
     const wins = rs.filter(r => r.over === 'win');
     const tok = rs.reduce((t, r) => t + r.total.token, 0), fix = rs.reduce((t, r) => t + r.total.fixed, 0);
