@@ -127,6 +127,7 @@ test('自动接单：只接质量够得上、做得完的单', () => {
 test('半自动推进：遇到抉择事件停下，且不超过上限', () => {
   const s = S.newGame('code');
   s.offers = [];
+  s.popups = []; // 开局使命弹窗已由 UI 展示
   let r = S.runUntil(s, 7, () => 0.99);
   expect(r.days).toBe(7);
   expect(s.day).toBe(7);
@@ -180,4 +181,24 @@ test('#还我旧模型：复活的模型 30 天后再次下线', () => {
   expect(S.getModel(s, 'gpt4m').retire).toBe(110);
   while (s.day < 110) { s.cash = 1e5; S.tick(s, () => 0.99); }
   expect(S.getModel(s, 'gpt4m')).toBeUndefined();
+});
+
+test('创业日记：里程碑只触发一次，日常碎片不打断半自动推进', () => {
+  const s = S.newGame('code');
+  expect(s.popups.length).toBe(1); // 开局使命
+  s.popups = [];
+  s.offers = [];
+  s.cash = 120000;
+  S.tick(s, () => 0.99);
+  expect(s.milestones.map(m => m.id)).toEqual(['cash100k']);
+  expect(s.popups.length).toBe(1);
+  S.tick(s, () => 0.99);
+  expect(s.milestones.length).toBe(1);
+  // 日常碎片（rand 小于 0.3 时出现）不会让 runUntil 停下
+  s.popups = [];
+  let flavors = 0;
+  const r = S.runUntil(s, 10, () => 0.25);
+  flavors = s.log.filter(l => /^(🗞️|💬|🤖|💭)/.test(l.text)).length;
+  expect(flavors).toBeGreaterThan(0);
+  expect(r.days).toBe(10);
 });

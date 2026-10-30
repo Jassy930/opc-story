@@ -242,7 +242,8 @@ function showStart() {
   try { saved = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch {} // 坏存档当作没有
   if (saved?.v !== SIM.SAVE_V) saved = null;
   modal(`<h2>OPC 一人公司物语</h2>
-    <p>你辞职了，决定一个人带着一群 AI agent 开公司。<br>接单赚钱，控制 token 成本，跟上模型迭代，目标：现金 ${money(SIM.GOAL)}。</p>` +
+    <p>你辞职了，决定一个人带着一群 AI agent 开公司。<br>接单赚钱，控制 token 成本，跟上模型迭代，目标：现金 ${money(SIM.GOAL)}。</p>
+    <p class="dim">别人说一人公司只是副业、是噱头、是更卷的打工。你想证明：一个人加一群 agent，也能做成一家真正的公司。</p>` +
     (saved && !saved.over ? `<button class="card" data-act="load"><b>▶ 继续上局</b>　第 ${saved.day} 天 · 现金 ${money(saved.cash)}</button>` : '') +
     `<p>选一个公司方向开新局：</p>` +
     SIM.D.directions.map(d => `<button class="card" data-act="start" data-id="${d.id}">
@@ -252,11 +253,15 @@ function showStart() {
 function showPopups() {
   if (!G.popups.length) return;
   const texts = G.popups.splice(0);
-  modal(`<h2>${{ win: '🏆 胜利', lose: '💸 破产', sold: '🤝 收购结局', hired: '💼 打工人结局' }[G.over] || '📢 行业快讯'}</h2>` +
+  const title = { win: '🏆 胜利', lose: '💸 破产', sold: '🤝 收购结局', hired: '💼 打工人结局' }[G.over]
+    || (texts.every(t => t.startsWith('📖')) ? `📖 创业日记 · 第 ${G.day} 天` : '📢 新消息');
+  modal(`<h2>${title}</h2>` +
     texts.map(t => `<p>${t}</p>`).join('') +
     (G.over
       ? `<p class="dim">共经营 ${G.day} 天，声誉 ${G.rep}，团队 ${G.agents.length} 个 agent。<br>` +
-        `累计项目收入 ${money(G.total.income)}，烧掉 token ${money(G.total.token)}，固定开销 ${money(G.total.fixed)}。</p><button data-act="restart">再来一局</button>`
+        `交付 ${G.delivered} 单，逾期 ${G.failed} 单。累计项目收入 ${money(G.total.income)}，烧掉 token ${money(G.total.token)}，固定开销 ${money(G.total.fixed)}。</p>` +
+        `<h3>你的创业历程</h3><p class="dim">D0 辞职创业 → ` + G.milestones.map(m => `D${m.day} ${SIM.D.milestones.find(x => x.id === m.id).title}`).join(' → ') +
+        ` → D${G.day} ${{ win: '现金破百万', lose: '破产', sold: '公司被收购', hired: '去大厂打工' }[G.over]}</p><button data-act="restart">再来一局</button>`
       : '<button data-act="close">继续经营</button>'));
 }
 
@@ -303,7 +308,7 @@ document.addEventListener('click', e => {
   b.blur(); // 防止之后按空格时重复触发这个按钮
   const id = +b.dataset.id;
   switch (b.dataset.act) {
-    case 'start': G = SIM.newGame(b.dataset.id); closeModal(); break;
+    case 'start': G = SIM.newGame(b.dataset.id); closeModal(); save(); renderPanel(); showPopups(); return;
     case 'load': G = JSON.parse(localStorage.getItem(SAVE_KEY)); closeModal(); renderPanel(); showPending(); return;
     case 'restart': showStart(); return;
     case 'close': closeModal(); showPending(); break;

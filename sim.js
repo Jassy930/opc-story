@@ -53,13 +53,15 @@ function newGame(dirId, rand = Math.random) {
     v: SAVE_V, day: 0, dir: dir.id, cash: dir.cash, rep: 10, mrr: 0, mode: 'normal', throttle: 0,
     energy: 100, action: 'manage', upgrades: [], extraFixed: 0, pending: null, soldFor: 0,
     auto: { accept: false, rest: false }, total: { income: 0, token: 0, fixed: 0 },
+    delivered: 0, failed: 0, milestones: [],
     models: D.models.filter(m => m.release === 0).map(m => ({ ...m })),
     agents: [], offers: [], projects: [], log: [], popups: [], nextId: 1,
     month: { income: 0, token: 0 }, over: null, hist: [dir.cash], report: null,
   };
   makeAgent(s, dir.role, 'cs35', rand);
   for (let i = 0; i < 3; i++) s.offers.push(makeOffer(s, rand));
-  log(s, `「${dir.name}」成立了！你和你的第一个 agent 开始创业。`);
+  log(s, `📖 ${dir.intro}`);
+  log(s, `📖「${dir.name}」成立了。你的使命：证明一个人加一群 agent，也能做成一家真正的公司。`, true);
   return s;
 }
 
@@ -463,6 +465,22 @@ function choose(s, i, rand = Math.random) {
   return true;
 }
 
+// ---- 日常碎片：纯信息，近期出现过的不重复 ----
+
+function flavor(s, rand) {
+  const recent = new Set(s.log.map(l => l.text));
+  const names = s.agents.map(a => a.name);
+  const newest = s.models.reduce((a, b) => (b.release > a.release ? b : a));
+  for (let i = 0; i < 5; i++) {
+    const t = pick(D.flavor, rand);
+    if (!names.length && t.includes('{agent')) continue;
+    const a1 = pick(names, rand) || '', a2 = names.filter(n => n !== a1)[0] || a1;
+    const text = t.replace('{agent2}', a2).replace('{agent}', a1).replace('{n}', names.length)
+      .replace('{day}', s.day).replace('{newest}', newest.name);
+    if (!recent.has(text)) return log(s, text);
+  }
+}
+
 // ---- 自动化 ----
 
 function setAuto(s, key, on) { if (key in s.auto) s.auto[key] = !!on; }
@@ -501,7 +519,7 @@ function runUntil(s, max = 30, rand = Math.random) {
     const hit = s.report.lines.find(t => /^(✅|❌|📰)/.test(t));
     const why = s.over ? '游戏结束'
       : s.pending ? '有事件需要你决定'
-      : s.popups.length ? '行业快讯'
+      : s.popups.length ? (s.popups.every(t => t.startsWith('📖')) ? '新的创业日记' : '有新消息')
       : hit ? hit
       : !s.auto.accept && s.offers.length && s.agents.some(a => busy0.has(a.id) && !a.busy) ? '有 agent 闲下来了，订单板上有单'
       : s.cash < 0 && cash0 >= 0 ? '进入透支！'
@@ -516,6 +534,7 @@ function runUntil(s, max = 30, rand = Math.random) {
 
 function tick(s, rand = Math.random) {
   if (s.over || s.pending) return false;
+  s.delivered ??= 0; s.failed ??= 0; s.milestones ??= []; // 兼容旧存档
   s.day++;
   s.report = { day: s.day, lines: [], work: [], income: 0, token: 0 };
   const up = boosts(s);
@@ -594,18 +613,21 @@ function tick(s, rand = Math.random) {
       s.month.income += pay;
       s.total.income += pay;
       s.report.income += pay;
+      s.delivered++;
       s.rep = clamp(s.rep + (q >= p.minQ ? 2 : -4), 0, 100);
       if (p.type === 'service') s.mrr += Math.round(p.reward * 0.04);
       log(s, `✅ 交付「${p.name}」质量 ${Math.round(q * 100)}%（要求 ${Math.round(p.minQ * 100)}%），收入 ${yuan(pay)}`);
       s.projects.splice(s.projects.indexOf(p), 1);
     } else if (s.day > p.deadline) {
       s.rep = clamp(s.rep - 8, 0, 100);
+      s.failed++;
       log(s, `❌「${p.name}」逾期，客户取消合同，声誉 -8`);
       s.projects.splice(s.projects.indexOf(p), 1);
     }
   }
 
   if (s.day > 3 && rand() < 0.18) randomEvent(s, rand);
+  else if (rand() < 0.3) flavor(s, rand); // 没事发生的日子，来点生活
   s.rep = clamp(s.rep, 0, 100);
 
   // 月结
@@ -616,6 +638,12 @@ function tick(s, rand = Math.random) {
     log(s, `📅 第 ${s.day / 30} 月结算：项目收入 ${yuan(s.month.income)}，订阅 ${yuan(s.mrr)}，` +
       `token ${yuan(s.month.token)}，固定开销 ${yuan(fixed)}`);
     s.month = { income: 0, token: 0 };
+  }
+
+  for (const m of D.milestones) {
+    if (s.milestones.some(x => x.id === m.id) || !m.cond(s)) continue;
+    s.milestones.push({ id: m.id, day: s.day });
+    log(s, `📖 ${typeof m.text === 'function' ? m.text(s) : m.text}`, !!m.popup);
   }
 
   s.hist.push(s.cash);
