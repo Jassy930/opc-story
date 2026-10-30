@@ -29,11 +29,13 @@
   .tag { font-size: 11px; padding: 0 4px; border: 1px solid; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   td, th { text-align: left; padding: 1px 4px; }
-  #log { height: 150px; overflow-y: auto; font-size: 13px; }
+  #log { height: 120px; overflow-y: auto; font-size: 13px; }
   #log div { border-bottom: 1px dotted #3a3560; }
   #modal { position: fixed; inset: 0; background: #0009; display: none; align-items: center; justify-content: center; }
   #modal .box { width: 560px; padding: 16px; }
   #modal h2 { margin-top: 0; color: #ffd166; }
+  button.big { font-size: 18px; padding: 4px 18px; background: #ffd166; }
+  #report { font-size: 13px; max-height: 170px; overflow-y: auto; }
   .card { display: block; width: 100%; text-align: left; margin: 8px 0; padding: 8px; }
 </style>
 </head>
@@ -44,11 +46,12 @@
     <canvas id="cv" width="960" height="540"></canvas>
     <div class="box" style="margin-top:10px">
       <div class="row" style="border:0">
-        速度 <span id="speed"></span>
+        <button id="next" data-act="next" class="big">下一天 ▶</button><span class="dim">（空格键）</span>
         <span class="grow"></span>
         token 模式 <span id="mode"></span>
       </div>
     </div>
+    <div class="box"><h3>📋 日报</h3><div id="report"></div></div>
     <div class="box"><h3>公司日志</h3><div id="log"></div></div>
   </div>
   <div id="side">

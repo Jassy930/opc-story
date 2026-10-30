@@ -61,3 +61,12 @@ test('平衡性：自动玩家开局不秒破产，也不会无限暴富', () =>
     expect(results.some(s => s.over === 'win' && s.day < 300)).toBe(false);
   }
 });
+
+test('存档安全：状态可 JSON 往返后继续推进', () => {
+  const s = autoplay(S.newGame('content', seeded(3)), seeded(9), 60);
+  const t = JSON.parse(JSON.stringify(s));
+  expect(t).toEqual(s);
+  S.tick(t, seeded(1));
+  expect(t.day).toBe(s.day + 1);
+  expect(t.report.day).toBe(t.day);
+});

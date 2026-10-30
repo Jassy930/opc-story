@@ -7,7 +7,8 @@ const $ = id => document.getElementById(id);
 const money = n => '¥' + Math.round(n).toLocaleString();
 const TYPE_COLOR = { code: '#5bc0eb', content: '#f78fb3', service: '#7bd389' };
 
-let G = null, speed = 1, frame = 0, cashHist = [], particles = [], modalOpen = false;
+let G = null, frame = 0, particles = [], modalOpen = false;
+const SAVE_KEY = "opc-save";
 
 // ---------- 像素精灵：字符 → 颜色，'.' 透明 ----------
 const ROBOT = [
@@ -56,9 +57,6 @@ function drawDesk(x, y, agent) {
       k: '#1b1830', b: m ? m.color : '#888', m: '#1b1830',
       e: busy ? '#9ff6ff' : '#f4ecd8', a: busy && frame % 6 < 3 ? '#ff6b6b' : '#777',
     });
-    if (busy && frame % 3 === 0 && Math.random() < 0.5) {
-      particles.push({ x: x + 12 + Math.random() * 8, y: y - 26, vy: -0.4, life: 18, c: '#ffd166' });
-    }
   }
   // 桌子
   rect(x - 2, y - 2, 34, 3, '#a8744f');
@@ -93,12 +91,12 @@ function drawScene() {
   // 白板：现金曲线
   rect(124, 6, 90, 38, '#e8e4f0');
   rect(124, 42, 90, 2, '#9a93b8');
-  if (cashHist.length > 1) {
-    const max = Math.max(...cashHist), min = Math.min(0, ...cashHist);
-    cashHist.forEach((v, i) => {
-      const px = 128 + Math.floor(i * 82 / Math.max(cashHist.length - 1, 1));
+  if (G.hist.length > 1) {
+    const max = Math.max(...G.hist), min = Math.min(0, ...G.hist);
+    G.hist.forEach((v, i) => {
+      const px = 128 + Math.floor(i * 82 / Math.max(G.hist.length - 1, 1));
       const py = 38 - Math.floor((v - min) / (max - min || 1) * 28);
-      rect(px, py, 1, 1, v < cashHist[i - 1] ? '#e05a5a' : '#2f9e5b');
+      rect(px, py, 1, 1, v < G.hist[i - 1] ? '#e05a5a' : '#2f9e5b');
     });
   }
   ctx.font = '5px sans-serif';
@@ -171,10 +169,13 @@ function renderPanel() {
     `🎯 目标 ${money(SIM.GOAL)}（${(G.cash / SIM.GOAL * 100).toFixed(1)}%）`,
   ].map(x => `<span>${x}</span>`).join('');
 
-  $('speed').innerHTML = ['⏸', '▶', '▶▶', '▶▶▶'].map((t, i) =>
-    `<button data-act="speed" data-v="${i}" class="${speed === i ? 'on' : ''}">${t}</button>`).join(' ');
   $('mode').innerHTML = Object.entries(SIM.MODES).map(([k, m]) =>
     `<button data-act="mode" data-v="${k}" class="${G.mode === k ? 'on' : ''}" title="token ×${m.tok} / 产出 ×${m.work}">${m.name}</button>`).join(' ');
+  $('next').disabled = !!G.over;
+  $('report').innerHTML = G.report
+    ? `<b>第 ${G.report.day} 天</b>　<span class="good">收入 ${money(G.report.income)}</span>　<span class="bad">token ${money(G.report.token)}</span>` +
+      [...G.report.work, ...G.report.lines].map(t => `<div>${t}</div>`).join('')
+    : '<span class="dim">新公司开张。接几个单子、配好模型，然后点「下一天」。</span>';
 
   // 正在操作下拉框时别重绘 agent 区，否则下拉会被关掉
   if (document.activeElement?.tagName !== "SELECT" || !$("agents").contains(document.activeElement)) {
@@ -225,9 +226,11 @@ function modal(html) { $('modalBody').innerHTML = html; $('modal').style.display
 function closeModal() { $('modal').style.display = 'none'; modalOpen = false; }
 
 function showStart() {
+  const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
   modal(`<h2>OPC 一人公司物语</h2>
-    <p>你辞职了，决定一个人带着一群 AI agent 开公司。<br>接单赚钱，控制 token 成本，跟上模型迭代，目标：现金 ${money(SIM.GOAL)}。</p>
-    <p>先选一个公司方向：</p>` +
+    <p>你辞职了，决定一个人带着一群 AI agent 开公司。<br>接单赚钱，控制 token 成本，跟上模型迭代，目标：现金 ${money(SIM.GOAL)}。</p>` +
+    (saved && !saved.over ? `<button class="card" data-act="load"><b>▶ 继续上局</b>　第 ${saved.day} 天 · 现金 ${money(saved.cash)}</button>` : '') +
+    `<p>选一个公司方向开新局：</p>` +
     SIM.D.directions.map(d => `<button class="card" data-act="start" data-id="${d.id}">
       <b>${d.name}</b>　启动资金 ${money(d.cash)}<br><span class="dim">${d.desc}</span></button>`).join(''));
 }
@@ -242,51 +245,66 @@ function showPopups() {
       : '<button data-act="close">继续经营</button>'));
 }
 
+const save = () => G.over ? localStorage.removeItem(SAVE_KEY) : localStorage.setItem(SAVE_KEY, JSON.stringify(G));
+
+// ---------- 推进一天（玩家点击才会走） ----------
+function nextDay() {
+  if (!G || G.over || modalOpen) return;
+  const last = G.log[0];
+  SIM.tick(G);
+  // 金币从干活的 agent 头上冒出来 = 今天烧掉的 token
+  G.agents.forEach((a, i) => {
+    if (!a.busy) return;
+    for (let k = 0; k < 5; k++) particles.push({ x: SLOTS[i].x + 10 + Math.random() * 12, y: SLOTS[i].y - 26 - k * 3, vy: -0.4, life: 16 + k * 3, c: '#ffd166' });
+  });
+  let n = 0; // 同一天多条提示往上错开，避免叠字
+  for (const l of G.log) {
+    if (l === last) break;
+    const y = 110 - 9 * n++;
+    if (l.text.startsWith('✅')) particles.push({ x: 277, y, vy: -0.5, life: 30, c: '#7bd389', text: '交付！+¥' });
+    if (l.text.startsWith('❌')) particles.push({ x: 277, y, vy: -0.5, life: 30, c: '#ff6b6b', text: '逾期…' });
+    if (l.text.startsWith('📰')) particles.push({ x: 277, y, vy: -0.4, life: 30, c: '#ffd166', text: '突发！' });
+  }
+  save();
+  renderPanel();
+  showPopups();
+}
+
 // ---------- 交互 ----------
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
   if (!b) return;
+  b.blur(); // 防止之后按空格时重复触发这个按钮
   const id = +b.dataset.id;
   switch (b.dataset.act) {
-    case 'start': G = SIM.newGame(b.dataset.id); cashHist = [G.cash]; closeModal(); break;
+    case 'start': G = SIM.newGame(b.dataset.id); closeModal(); break;
+    case 'load': G = JSON.parse(localStorage.getItem(SAVE_KEY)); closeModal(); break;
     case 'restart': showStart(); return;
     case 'close': closeModal(); break;
-    case 'speed': speed = +b.dataset.v; break;
+    case 'next': nextDay(); return;
     case 'mode': SIM.setMode(G, b.dataset.v); break;
     case 'accept': SIM.accept(G, id); break;
     case 'hire': SIM.hire(G, $('hireRole').value); break;
     case 'fire': if (confirm('确定下线这个 agent？')) SIM.fire(G, id); break;
   }
-  if (G) renderPanel();
+  if (G) { save(); renderPanel(); }
 });
 
 document.addEventListener('change', e => {
   if (!e.target.dataset.agent) return;
   SIM.setModel(G, +e.target.dataset.agent, e.target.value);
   e.target.blur();
+  save();
   renderPanel();
 });
 
-// ---------- 主循环：10fps 动画，按速度推进天数 ----------
-const TICK_EVERY = [Infinity, 8, 4, 1]; // 每隔几帧过一天
-setInterval(() => {
-  if (!G) return;
-  frame++;
-  if (!modalOpen && !G.over && frame % TICK_EVERY[speed] === 0) {
-    const last = G.log[0];
-    SIM.tick(G);
-    for (const l of G.log) {
-      if (l === last) break;
-      if (l.text.startsWith('✅')) particles.push({ x: 277, y: 110, vy: -0.5, life: 30, c: '#7bd389', text: '交付！+¥' });
-      if (l.text.startsWith('❌')) particles.push({ x: 277, y: 110, vy: -0.5, life: 30, c: '#ff6b6b', text: '逾期…' });
-      if (l.text.startsWith('📰')) particles.push({ x: 277, y: 110, vy: -0.4, life: 30, c: '#ffd166', text: '突发！' });
-    }
-    cashHist.push(G.cash);
-    if (cashHist.length > 90) cashHist.shift();
-    renderPanel();
-    showPopups();
-  }
-  drawScene();
-}, 100);
+document.addEventListener('keydown', e => {
+  if (e.code !== 'Space' || /SELECT|INPUT|BUTTON/.test(document.activeElement.tagName)) return;
+  e.preventDefault();
+  nextDay();
+});
+
+// 只负责动画（机器人晃动、指示灯、粒子），不推进游戏时间
+setInterval(() => { if (G) { frame++; drawScene(); } }, 100);
 
 showStart();

@@ -21,6 +21,7 @@ const hireCost = s => 5000 + 3000 * s.agents.length;
 function log(s, text, popup = false) {
   s.log.unshift({ day: s.day, text });
   s.log.length = Math.min(s.log.length, 60);
+  if (s.report) s.report.lines.push(text);
   if (popup) s.popups.push(text);
 }
 
@@ -30,7 +31,7 @@ function newGame(dirId, rand = Math.random) {
     day: 0, dir: dir.id, cash: dir.cash, rep: 10, mrr: 0, mode: 'normal', throttle: 0,
     models: D.models.filter(m => m.release === 0).map(m => ({ ...m })),
     agents: [], offers: [], projects: [], log: [], popups: [], nextId: 1,
-    month: { income: 0, token: 0 }, over: null,
+    month: { income: 0, token: 0 }, over: null, hist: [dir.cash], report: null,
   };
   makeAgent(s, dir.role, 'cs35', rand);
   for (let i = 0; i < 3; i++) s.offers.push(makeOffer(s, rand));
@@ -149,6 +150,7 @@ function randomEvent(s, rand) {
 function tick(s, rand = Math.random) {
   if (s.over) return;
   s.day++;
+  s.report = { day: s.day, lines: [], work: [], income: 0, token: 0 };
 
   // 模型发布 / 下线
   for (const m of D.models) {
@@ -179,13 +181,15 @@ function tick(s, rand = Math.random) {
     const mine = s.projects.filter(p => p.type === D.roles[a.role].type);
     const p = (mine.length ? mine : s.projects).reduce((x, y) => (!x || y.deadline < x.deadline ? y : x), null);
     a.busy = p ? p.id : null;
-    if (!p) continue;
+    if (!p) { s.report.work.push(`💤 ${a.name} 空闲`); continue; }
     const m = getModel(s, a.modelId);
     const cost = TOKENS_PER_DAY * mode.tok * m.price;
     s.cash -= cost;
     s.month.token += cost;
     const w = m.power * mode.work * (1 + 0.15 * (a.level - 1)) * (D.roles[a.role].type === p.type ? 1.5 : 1) * (s.throttle > 0 ? 0.5 : 1);
     p.done += w;
+    s.report.token += cost;
+    s.report.work.push(`🤖 ${a.name} → ${p.name}：产出 ${w.toFixed(1)}，烧 ¥${Math.round(cost)}`);
     p.qsum += w * clamp(m.quality + mode.q, 0, 1);
     if (!p.crew.includes(a.id)) p.crew.push(a.id);
   }
@@ -198,6 +202,7 @@ function tick(s, rand = Math.random) {
       const pay = Math.round(p.reward * clamp(q / p.minQ, 0.5, 1.3));
       s.cash += pay;
       s.month.income += pay;
+      s.report.income += pay;
       s.rep = clamp(s.rep + (q >= p.minQ ? 2 : -4), 0, 100);
       if (p.type === 'service') s.mrr += Math.round(p.reward * 0.04);
       s.agents.filter(a => p.crew.includes(a.id) && a.level < 5 && rand() < 0.25).forEach(a => a.level++);
@@ -221,6 +226,9 @@ function tick(s, rand = Math.random) {
       `token ¥${Math.round(s.month.token).toLocaleString()}，固定开销 ¥${fixed.toLocaleString()}`);
     s.month = { income: 0, token: 0 };
   }
+
+  s.hist.push(s.cash);
+  if (s.hist.length > 90) s.hist.shift();
 
   if (s.cash < 0) { s.over = 'lose'; log(s, `💸 现金耗尽，公司在第 ${s.day} 天破产了。`, true); }
   else if (s.cash >= GOAL) { s.over = 'win'; log(s, `🏆 第 ${s.day} 天现金突破 ¥100 万，一人公司成功了！`, true); }
