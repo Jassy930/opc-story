@@ -241,7 +241,7 @@ function showStart() {
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch {} // 坏存档当作没有
   if (saved?.v !== SIM.SAVE_V) saved = null;
-  modal(`<h2>OPC 一人公司物语</h2>
+  modal(`<h2>一人公司物语</h2>
     <p>你辞职了，决定一个人带着一群 AI agent 开公司。<br>接单赚钱，控制 token 成本，跟上模型迭代，目标：现金 ${money(SIM.GOAL)}。</p>
     <p class="dim">别人说一人公司只是副业、是噱头、是更卷的打工。你想证明：一个人加一群 agent，也能做成一家真正的公司。</p>` +
     (saved && !saved.over ? `<button class="card" data-act="load"><b>▶ 继续上局</b>　第 ${saved.day} 天 · 现金 ${money(saved.cash)}</button>` : '') +
